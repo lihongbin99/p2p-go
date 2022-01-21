@@ -21,8 +21,8 @@ const (
 
 var (
 	clientNameMap = map[string]int{
-		"udp_p2p_3389":  4567,
-		"udp_p2p_speed": 13521,
+		"udp_p2p_3389": 4567,
+		//"udp_p2p_speed": 13521,
 	}
 	udpClientNames = make([]string, 0)
 )

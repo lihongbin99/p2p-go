@@ -22,8 +22,8 @@ const (
 
 var (
 	serverNameMap = map[string]int{
-		"tcp_p2p_3389":  3389,
-		"tcp_p2p_speed": 13522,
+		"tcp_p2p_3389": 3389,
+		//"tcp_p2p_speed": 13522,
 	}
 	udpServerNames = make([]string, 0)
 )
@@ -112,7 +112,7 @@ func newConnect(s *ClientServer, cId int32, name string, remoteAddrS string) {
 	log.Info(cId, newId, remoteAddrS)
 	localAddr, _ := net.ResolveTCPAddr("tcp4", "0.0.0.0:"+strconv.Itoa(rand.Intn(10000)+50000))
 
-	dialer := net.Dialer{Timeout: 500 * time.Millisecond, LocalAddr: localAddr}
+	dialer := net.Dialer{Timeout: 10 * time.Millisecond, LocalAddr: localAddr}
 	// 发送探测包
 	tc, err := dialer.Dial("tcp4", remoteAddrS)
 	if err == nil {

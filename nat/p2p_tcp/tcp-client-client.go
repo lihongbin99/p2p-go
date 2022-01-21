@@ -22,8 +22,8 @@ const (
 
 var (
 	clientNameMap = map[string]int{
-		"tcp_p2p_3389":  4567,
-		"tcp_p2p_speed": 13521,
+		"tcp_p2p_3389": 4567,
+		//"tcp_p2p_speed": 13521,
 	}
 	tcpClientNames = make([]string, 0)
 )
