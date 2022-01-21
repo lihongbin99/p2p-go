@@ -147,6 +147,7 @@ func clientExchangeData(c *ClientClient, buf []byte, readLength int, localAddr *
 }
 
 func createConnect(c *ClientClient, localAddr *net.UDPAddr, name string) (success bool) {
+	startCreateTime := time.Now()
 	newId := getNewCid()
 	log.Trace(newId, 0, "new connect")
 	serverAddr, err := net.ResolveUDPAddr("udp4", c.serverUDPAddr)
@@ -247,8 +248,10 @@ func createConnect(c *ClientClient, localAddr *net.UDPAddr, name string) (succes
 	}
 	_ = udp.SetReadDeadline(time.Time{})
 
+	endCreateTime := time.Now()
 	// 开始交换数据
-	log.Info(udp.Id, udp.Tid, fmt.Sprintf("nat success: [%s], delay: %dms", remoteAddrS, endDelayTime.Sub(startDelayTime)/time.Millisecond))
+	log.Info(udp.Id, udp.Tid, fmt.Sprintf("nat success: [%s], penetrate: %dms, delay: %dms", remoteAddrS, endCreateTime.Sub(startCreateTime)/time.Millisecond, endDelayTime.Sub(startDelayTime)/time.Millisecond))
+
 	c.lock.Lock()
 	c.lock.Unlock()
 	linkCache := c.addrCache[localAddr.String()]

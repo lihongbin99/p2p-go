@@ -84,6 +84,7 @@ func NewClientClient(writeChan chan msg.Message) (result *ClientClient) {
 
 func createConnect(c *ClientClient, appConn *net.TCPConn, name string) {
 	defer func() { _ = appConn.Close() }()
+	startCreateTime := time.Now()
 	newId := getNewCid()
 	log.Trace(newId, 0, "new connect")
 	serverAddr, err := net.ResolveTCPAddr("tcp4", c.serverTCPAddr)
@@ -173,7 +174,8 @@ func createConnect(c *ClientClient, appConn *net.TCPConn, name string) {
 	_ = tcp.SetReadDeadline(time.Time{})
 
 	// 开始交换数据
-	log.Info(tcp.Id, tcp.Tid, fmt.Sprintf("nat success: [%s], delay: %dms", remoteAddrS, endDelayTime.Sub(startDelayTime)/time.Millisecond))
+	endCreateTime := time.Now()
+	log.Info(tcp.Id, tcp.Tid, fmt.Sprintf("nat success: [%s], penetrate: %dms, delay: %dms", remoteAddrS, endCreateTime.Sub(startCreateTime)/time.Millisecond, endDelayTime.Sub(startDelayTime)/time.Millisecond))
 	go func() {
 		_, _ = sio.Copy(appConn, tcp)
 	}()
