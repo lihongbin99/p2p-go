@@ -24,8 +24,8 @@ var (
 )
 
 func init() {
-	flag.BoolVar(&consoleColor, "color", false, "consoleColor")
 	flag.StringVar(&logType, "log", "nil", "debug or trace")
+	flag.BoolVar(&consoleColor, "color", false, "consoleColor")
 }
 
 func Init() {

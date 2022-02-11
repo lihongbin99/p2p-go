@@ -22,6 +22,7 @@ const (
 var (
 	clientNameMap = map[string]int{
 		"udp_p2p_3389": 4567,
+		"udp_p2p_5938": 5937,
 		//"udp_p2p_speed": 13521,
 	}
 	udpClientNames = make([]string, 0)
@@ -162,6 +163,7 @@ func createConnect(c *ClientClient, localAddr *net.UDPAddr, name string) (succes
 	}
 	defer func() { _ = u.Close() }()
 	udp := io.NewUDPById(u, newId)
+	udpAddr, _ := net.ResolveUDPAddr("udp4", udp.LocalAddr().String())
 
 	// 创建 p2p 连接
 	_, err = udp.WriteMessage(&msg.UDPNewConnectRequestMessage{Cid: udp.Id, Name: name})
@@ -209,7 +211,7 @@ func createConnect(c *ClientClient, localAddr *net.UDPAddr, name string) (succes
 		log.Error(udp.Id, m.Sid, fmt.Errorf("resolveUDPAddr: %v", err))
 		return
 	}
-	ru, err := net.DialUDP("udp4", nil, remoteAddr)
+	ru, err := net.DialUDP("udp4", udpAddr, remoteAddr)
 	if err != nil {
 		log.Error(udp.Id, m.Sid, fmt.Errorf("dialUDP: %v", err))
 		return

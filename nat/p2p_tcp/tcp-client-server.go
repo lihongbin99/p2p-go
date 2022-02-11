@@ -23,6 +23,7 @@ const (
 var (
 	serverNameMap = map[string]int{
 		"tcp_p2p_3389": 3389,
+		"tcp_p2p_5938": 5938,
 		//"tcp_p2p_speed": 13522,
 	}
 	udpServerNames = make([]string, 0)

@@ -23,6 +23,7 @@ const (
 var (
 	clientNameMap = map[string]int{
 		"tcp_p2p_3389": 4567,
+		"tcp_p2p_5938": 5937,
 		//"tcp_p2p_speed": 13521,
 	}
 	tcpClientNames = make([]string, 0)
@@ -99,6 +100,7 @@ func createConnect(c *ClientClient, appConn *net.TCPConn, name string) {
 	}
 	defer func() { _ = t.Close() }()
 	tcp := io.NewTCPById(t, newId)
+	tcpAddr, _ := net.ResolveTCPAddr("tcp4", tcp.LocalAddr().String())
 
 	// 创建 p2p 连接
 	_, err = tcp.WriteMessage(&msg.TCPNewConnectRequestMessage{Cid: tcp.Id, Name: name})
@@ -133,7 +135,7 @@ func createConnect(c *ClientClient, appConn *net.TCPConn, name string) {
 		log.Error(tcp.Id, m.Sid, fmt.Errorf("resolveTCPAddr: %v", err))
 		return
 	}
-	rt, err := net.DialTCP("tcp4", nil, remoteAddr)
+	rt, err := net.DialTCP("tcp4", tcpAddr, remoteAddr)
 	if err != nil {
 		log.Error(tcp.Id, m.Sid, fmt.Errorf("dialTCP: %v", err))
 		return
