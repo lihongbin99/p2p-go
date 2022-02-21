@@ -166,6 +166,7 @@ func (s *Server) Handle(cId int32, sId int32, ip string, port uint16, message *i
 		return
 	}
 
+	handle = true
 	switch m := message.Message.(type) {
 	case *msg.UDPRegisterRequestMessage:
 		// 服务端, 有一个失败的直接拒绝

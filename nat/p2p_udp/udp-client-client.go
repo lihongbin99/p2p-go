@@ -21,9 +21,9 @@ const (
 
 var (
 	clientNameMap = map[string]int{
-		"udp_p2p_3389": 4567,
-		"udp_p2p_5938": 5937,
-		//"udp_p2p_speed": 13521,
+		//"udp_p2p_3389": 13389,
+		//"udp_p2p_5938": 15938,
+		"udp_p2p_speed": 13521,
 	}
 	udpClientNames = make([]string, 0)
 )
@@ -109,7 +109,7 @@ func clientRunNewMessage(c *ClientClient, buf []byte, readLength int, localAddr 
 	}
 
 	c.lock.Lock()
-	c.lock.Unlock()
+	defer c.lock.Unlock()
 	if clientExchangeData(c, buf, readLength, localAddr) {
 		return
 	}
@@ -142,6 +142,7 @@ func clientExchangeData(c *ClientClient, buf []byte, readLength int, localAddr *
 			log.Error(remoteUDP.Id, remoteUDP.Tid, fmt.Errorf("exchange: %v", err))
 			delete(c.addrTable, localAddr.String())
 		}
+		remoteUDP.LastTransferTime = time.Now()
 		return true
 	}
 	return false
@@ -250,12 +251,15 @@ func createConnect(c *ClientClient, localAddr *net.UDPAddr, name string) (succes
 	}
 	_ = udp.SetReadDeadline(time.Time{})
 
+	// udp 关流
+	go goTimeOut(udp)
+
 	endCreateTime := time.Now()
 	// 开始交换数据
 	log.Info(udp.Id, udp.Tid, fmt.Sprintf("nat success: [%s], penetrate: %dms, delay: %dms", remoteAddrS, endCreateTime.Sub(startCreateTime)/time.Millisecond, endDelayTime.Sub(startDelayTime)/time.Millisecond))
 
 	c.lock.Lock()
-	c.lock.Unlock()
+	defer c.lock.Unlock()
 	linkCache := c.addrCache[localAddr.String()]
 	delete(c.addrCache, localAddr.String())
 	for _, buf := range linkCache.bufList {
@@ -269,18 +273,21 @@ func createConnect(c *ClientClient, localAddr *net.UDPAddr, name string) (succes
 	c.addrTable[localAddr.String()] = udp
 	// 返回数据给软件
 	go func(c *ClientClient, udp *io.UDP, localAddr *net.UDPAddr, name string) {
+		defer func() { _ = udp.Close() }()
 		buf := make([]byte, 64*1024)
 		for {
 			readLength, err := udp.Read(buf)
 			if err != nil {
-				log.Error(udp.Id, udp.Tid, fmt.Errorf("read from p2p error: %v", err))
+				if !udp.TimeOut {
+					log.Error(udp.Id, udp.Tid, fmt.Errorf("read from p2p error: %v", err))
+				}
 				break
 			}
+			udp.LastTransferTime = time.Now()
 			if readLength > 1464 {
 				log.Error(udp.Id, udp.Tid, fmt.Errorf("long read: %d", readLength))
 			}
-			_, err = c.writeToLocal(buf[:readLength], name, localAddr)
-			if err != nil {
+			if _, err = c.writeToLocal(buf[:readLength], name, localAddr); err != nil {
 				log.Error(udp.Id, udp.Tid, fmt.Errorf("write to local error: %v", err))
 				break
 			}

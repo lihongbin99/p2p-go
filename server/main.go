@@ -49,19 +49,17 @@ func main() {
 
 		go func(tcp *mio.TCP) {
 			log.Info(tcp.Tid, tcp.Id, "NewTCP")
+
+			readChan := make(chan mio.Message, 8)
+			writeChan := make(chan msg.Message, 8)
 			defer func() {
 				for _, h := range handles {
 					h.CloseConnect(tcp.Tid, tcp.Id)
 				}
+				defer close(writeChan)
 				_ = tcp.Close()
 				log.Info(tcp.Tid, tcp.Id, "CloseTCP")
 			}()
-
-			readChan := make(chan mio.Message, 8)
-			writeChan := make(chan msg.Message, 8) // TODO 在正确的地方关闭
-			for _, h := range handles {
-				h.NewConnect(tcp.Tid, tcp.Id, writeChan)
-			}
 			go func() {
 				defer close(readChan)
 				for {
@@ -72,6 +70,10 @@ func main() {
 					}
 				}
 			}()
+
+			for _, h := range handles {
+				h.NewConnect(tcp.Tid, tcp.Id, writeChan)
+			}
 
 			pingTicker := time.NewTicker(time.Duration(config.KeepAliveInterval) * time.Second)
 			defer pingTicker.Stop()

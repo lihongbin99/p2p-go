@@ -34,7 +34,6 @@ func notifyHandleChangeStatus(cId int32, sId int32, status byte) {
 	}
 }
 
-// TODO p2p 连接没有关流
 func main() {
 	flag.Parse()
 	logger.Init()

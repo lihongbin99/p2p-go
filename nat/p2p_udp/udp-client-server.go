@@ -20,9 +20,9 @@ const (
 
 var (
 	serverNameMap = map[string]int{
-		"udp_p2p_3389": 3389,
-		"udp_p2p_5938": 5938,
-		//"udp_p2p_speed": 13522,
+		//"udp_p2p_3389": 3389,
+		//"udp_p2p_5938": 5938,
+		"udp_p2p_speed": 13522,
 	}
 	udpServerNames = make([]string, 0)
 )
@@ -108,11 +108,13 @@ func newConnect(s *ClientServer, cId int32, name string, remoteAddrS string) {
 	remoteAddr, err := net.ResolveUDPAddr("udp4", remoteAddrS)
 	if err != nil {
 		log.Error(cId, newId, fmt.Errorf("resolveUDPAddr: %v", err))
+		_ = appConn.Close()
 		return
 	}
 	tc, err := net.DialUDP("udp4", nil, remoteAddr)
 	if err != nil {
 		log.Error(cId, newId, fmt.Errorf("dialUDP: %v", err))
+		_ = appConn.Close()
 		return
 	}
 	defer func() { _ = tc.Close() }()
@@ -120,6 +122,7 @@ func newConnect(s *ClientServer, cId int32, name string, remoteAddrS string) {
 	_, err = testUDP.WriteMessage(&msg.IgnoreMessage{})
 	if err != nil {
 		log.Error(cId, newId, fmt.Errorf("writeMessage IgnoreMessage: %v", err))
+		_ = appConn.Close()
 		return
 	}
 	log.Trace(cId, newId, fmt.Sprintf("send IgnoreMessage to [%s]", remoteAddr))
@@ -131,11 +134,13 @@ func newConnect(s *ClientServer, cId int32, name string, remoteAddrS string) {
 	serverAddr, err := net.ResolveUDPAddr("udp4", s.serverUDPAddr)
 	if err != nil {
 		log.Error(cId, newId, fmt.Errorf("resolveUDPAddr: %v", err))
+		_ = appConn.Close()
 		return
 	}
 	ts, err := net.DialUDP("udp4", localAddr, serverAddr)
 	if err != nil {
 		log.Error(cId, newId, fmt.Errorf("dialUDP: %v", err))
+		_ = appConn.Close()
 		return
 	}
 	defer func() { _ = ts.Close() }()
@@ -143,6 +148,7 @@ func newConnect(s *ClientServer, cId int32, name string, remoteAddrS string) {
 	_, err = testUDP.WriteMessage(&msg.UDPNewConnectResultRequestMessage{Cid: cId, Sid: newId})
 	if err != nil {
 		log.Error(cId, newId, fmt.Errorf("writeMessage UDPNewConnectResultRequestMessage: %v", err))
+		_ = appConn.Close()
 		return
 	}
 	log.Trace(cId, newId, fmt.Sprintf("send message UDPNewConnectResultRequestMessage to [%s]", s.serverUDPAddr))
@@ -151,6 +157,7 @@ func newConnect(s *ClientServer, cId int32, name string, remoteAddrS string) {
 	l, err := net.ListenUDP("udp4", localAddr)
 	if err != nil {
 		log.Error(cId, newId, fmt.Errorf("listenUDP: %v", err))
+		_ = appConn.Close()
 		return
 	}
 	udp := io.NewUDPById(l, newId)
@@ -161,59 +168,82 @@ func newConnect(s *ClientServer, cId int32, name string, remoteAddrS string) {
 	message, rd, err := udp.ReadMessageFromUDP()
 	if err != nil {
 		log.Error(udp.Tid, udp.Id, fmt.Errorf("read UDPNewConnectResultRequestMessage error: %v", err))
+		_ = udp.Close()
+		_ = appConn.Close()
 		return
 	}
-	_ = udp.SetReadDeadline(time.Time{})
 	switch m := message.(type) {
 	case *msg.UDPNewConnectResultRequestMessage:
 		if m.Sid == udp.Id {
 			if _, err := udp.WriteMessageToUDP(&msg.UDPNewConnectResultRequestMessage{Cid: udp.Tid}, rd); err != nil {
 				log.Error(udp.Tid, udp.Id, fmt.Errorf("write UDPNewConnectResultRequestMessage error: %v", err))
+				_ = udp.Close()
+				_ = appConn.Close()
 				return
 			}
 		} else {
 			log.Error(udp.Tid, udp.Id, fmt.Errorf("sid error: %d", m.Sid))
+			_ = udp.Close()
+			_ = appConn.Close()
 			return
 		}
 	default:
 		log.Error(udp.Tid, udp.Id, fmt.Errorf("message type no UDPNewConnectResultRequestMessage error: %v", message.ToByteBuf()))
+		_ = udp.Close()
+		_ = appConn.Close()
 		return
 	}
+	_ = udp.SetReadDeadline(time.Time{})
+
+	// udp 关流
+	go goTimeOut(udp)
 
 	// 交换数据
 	log.Info(udp.Tid, udp.Id, fmt.Sprintf("nat success: [%s]", remoteAddrS))
-	go func(dest *net.UDPConn, src *net.UDPConn) {
+	go func(dest *net.UDPConn, src *net.UDPConn, udp *io.UDP) {
+		defer func() {
+			_ = src.Close()
+			_ = dest.Close()
+		}()
 		buf := make([]byte, 64*1024)
 		for {
 			readLength, err := src.Read(buf)
 			if err != nil {
-				log.Error(udp.Tid, udp.Id, fmt.Errorf("read from p2p error: %v", err))
+				if !udp.TimeOut {
+					log.Error(udp.Tid, udp.Id, fmt.Errorf("read from p2p error: %v", err))
+				}
 				break
 			}
-			_, err = dest.Write(buf[:readLength])
-			if err != nil {
+			udp.LastTransferTime = time.Now()
+			if _, err = dest.Write(buf[:readLength]); err != nil {
 				log.Error(udp.Tid, udp.Id, fmt.Errorf("write to app error: %v", err))
 				break
 			}
 		}
-	}(appConn, udp.UDPConn)
+	}(appConn, udp.UDPConn, udp)
 
-	go func(dest *net.UDPConn, src *net.UDPConn, rd *net.UDPAddr) {
+	go func(dest *net.UDPConn, src *net.UDPConn, rd *net.UDPAddr, udp *io.UDP) {
+		defer func() {
+			_ = src.Close()
+			_ = dest.Close()
+		}()
 		buf := make([]byte, 64*1024)
 		for {
 			readLength, err := src.Read(buf)
 			if err != nil {
-				log.Error(udp.Tid, udp.Id, fmt.Errorf("read from app error: %v", err))
+				if !udp.TimeOut {
+					log.Error(udp.Tid, udp.Id, fmt.Errorf("read from app error: %v", err))
+				}
 				break
 			}
+			udp.LastTransferTime = time.Now()
 			if readLength > 1464 {
-				log.Error(udp.Id, udp.Tid, fmt.Errorf("long read: %d", readLength))
+				log.Error(udp.Tid, udp.Id, fmt.Errorf("long read: %d", readLength))
 			}
-			_, err = dest.WriteToUDP(buf[:readLength], rd)
-			if err != nil {
+			if _, err = dest.WriteToUDP(buf[:readLength], rd); err != nil {
 				log.Error(udp.Tid, udp.Id, fmt.Errorf("write to p2p error: %v", err))
 				break
 			}
 		}
-	}(udp.UDPConn, appConn, rd)
+	}(udp.UDPConn, appConn, rd, udp)
 }

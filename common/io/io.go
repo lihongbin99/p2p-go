@@ -6,6 +6,7 @@ import (
 	"p2p-go/common/msg"
 	"p2p-go/common/utils"
 	"sync"
+	"time"
 )
 
 type Message struct {
@@ -85,14 +86,16 @@ func (c *TCP) WriteMessage(message msg.Message) (writeLen int, err error) {
 type UDP struct {
 	*net.UDPConn
 	*Base
+	LastTransferTime time.Time
+	TimeOut          bool
 }
 
 func NewUDP(conn *net.UDPConn) *UDP {
-	return &UDP{conn, newBase()}
+	return &UDP{conn, newBase(), time.Time{}, false}
 }
 
 func NewUDPById(conn *net.UDPConn, id int32) *UDP {
-	return &UDP{conn, newBaseById(id)}
+	return &UDP{conn, newBaseById(id), time.Time{}, false}
 }
 
 func (c *UDP) ReadMessageFromUDP() (message msg.Message, remoteAddr *net.UDPAddr, err error) {
