@@ -162,16 +162,13 @@ func createConnect(serverTCPAddr string, appConn *net.TCPConn, name string) (suc
 
 	remoteAddrS := m.SIp + ":" + strconv.Itoa(int(m.SPort))
 	log.Info(tcp.Id, m.Sid, fmt.Sprintf("remote addr : [%s]", remoteAddrS))
-	remoteAddr, err := net.ResolveTCPAddr("tcp4", remoteAddrS)
-	if err != nil {
-		log.Error(tcp.Id, m.Sid, fmt.Errorf("resolveTCPAddr: %v", err))
-		return
-	}
-	rt, err := net.DialTCP("tcp4", tcpAddr, remoteAddr)
+	dialer := net.Dialer{Timeout: 3 * time.Second, LocalAddr: tcpAddr}
+	rtt, err := dialer.Dial("tcp4", remoteAddrS)
 	if err != nil {
 		log.Error(tcp.Id, m.Sid, fmt.Errorf("dialTCP: %v", err))
 		return
 	}
+	rt := rtt.(*net.TCPConn)
 	defer func() { _ = rt.Close() }()
 	tcp = io.NewTCPById(rt, tcp.Id)
 	tcp.Tid = m.Sid
