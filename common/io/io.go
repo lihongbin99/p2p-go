@@ -15,19 +15,21 @@ type Message struct {
 }
 
 type Base struct {
-	Id        int32
-	Tid       int32
-	lenBuf    [4]byte
-	buf       []byte
-	readLock  sync.Mutex
-	writeLock sync.Mutex
+	Id               int32
+	Tid              int32
+	lenBuf           [4]byte
+	Buf              []byte
+	readLock         sync.Mutex
+	writeLock        sync.Mutex
+	LastTransferTime time.Time
+	TimeOut          bool
 }
 
 func newBase() *Base {
-	return &Base{id.NewId(), 0, [4]byte{}, make([]byte, 64*1024), sync.Mutex{}, sync.Mutex{}}
+	return &Base{id.NewId(), 0, [4]byte{}, make([]byte, 64*1024), sync.Mutex{}, sync.Mutex{}, time.Time{}, false}
 }
 func newBaseById(id int32) *Base {
-	return &Base{id, 0, [4]byte{}, make([]byte, 64*1024), sync.Mutex{}, sync.Mutex{}}
+	return &Base{id, 0, [4]byte{}, make([]byte, 64*1024), sync.Mutex{}, sync.Mutex{}, time.Time{}, false}
 }
 
 type TCP struct {
@@ -61,13 +63,13 @@ func (c *TCP) ReadMessage() Message {
 
 	maxReadLength = 0
 	for maxReadLength < messageLen {
-		readLength, err := c.TCPConn.Read(c.buf[maxReadLength : messageLen-maxReadLength])
+		readLength, err := c.TCPConn.Read(c.Buf[maxReadLength : messageLen-maxReadLength])
 		if err != nil {
 			return Message{Err: err}
 		}
 		maxReadLength += readLength
 	}
-	message := msg.Read(c.buf[:messageLen])
+	message := msg.Read(c.Buf[:messageLen])
 	return Message{Message: message, Err: err}
 }
 
@@ -86,27 +88,31 @@ func (c *TCP) WriteMessage(message msg.Message) (writeLen int, err error) {
 type UDP struct {
 	*net.UDPConn
 	*Base
-	LastTransferTime time.Time
-	TimeOut          bool
 }
 
 func NewUDP(conn *net.UDPConn) *UDP {
-	return &UDP{conn, newBase(), time.Time{}, false}
+	return &UDP{conn, newBase()}
 }
 
 func NewUDPById(conn *net.UDPConn, id int32) *UDP {
-	return &UDP{conn, newBaseById(id), time.Time{}, false}
+	return &UDP{conn, newBaseById(id)}
 }
 
+func (c *UDP) ReadBufFromUDP() (readLength int, remoteAddr *net.UDPAddr, err error) {
+	c.readLock.Lock()
+	defer c.readLock.Unlock()
+	readLength, remoteAddr, err = c.UDPConn.ReadFromUDP(c.Buf)
+	return
+}
 func (c *UDP) ReadMessageFromUDP() (message msg.Message, remoteAddr *net.UDPAddr, err error) {
 	c.readLock.Lock()
 	defer c.readLock.Unlock()
 	message = nil
-	readLength, remoteAddr, err := c.UDPConn.ReadFromUDP(c.buf)
+	readLength, remoteAddr, err := c.UDPConn.ReadFromUDP(c.Buf)
 	if err != nil {
 		return
 	}
-	message = msg.Read(c.buf[:readLength])
+	message = msg.Read(c.Buf[:readLength])
 	return
 }
 

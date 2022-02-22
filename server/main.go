@@ -50,7 +50,6 @@ func main() {
 		go func(tcp *mio.TCP) {
 			log.Info(tcp.Tid, tcp.Id, "NewTCP")
 
-			readChan := make(chan mio.Message, 8)
 			writeChan := make(chan msg.Message, 8)
 			defer func() {
 				for _, h := range handles {
@@ -60,6 +59,21 @@ func main() {
 				_ = tcp.Close()
 				log.Info(tcp.Tid, tcp.Id, "CloseTCP")
 			}()
+
+			_ = tcp.SetReadDeadline(time.Now().Add(3 * time.Second))
+			firstMessage := tcp.ReadMessage()
+			if firstMessage.Err != nil {
+				return
+			}
+			_ = tcp.SetReadDeadline(time.Time{})
+			for _, h := range handles {
+				if re := h.NewTCP(tcp, firstMessage.Message); re {
+					return
+				}
+			}
+
+			readChan := make(chan mio.Message, 8)
+			readChan <- firstMessage
 			go func() {
 				defer close(readChan)
 				for {
@@ -120,7 +134,10 @@ func main() {
 						split := strings.Split(remoteAddr, ":")
 						port, _ := strconv.Atoi(split[1])
 						for _, h := range handles {
-							if h.Handle(tcp.Tid, tcp.Id, split[0], uint16(port), &message) { // core processor!
+							if do, re := h.Handle(tcp, tcp.Tid, tcp.Id, split[0], uint16(port), &message); re { // core processor!
+								err = io.EOF
+								break
+							} else if do {
 								process = true
 								break
 							}

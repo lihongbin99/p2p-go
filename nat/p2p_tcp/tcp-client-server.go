@@ -66,6 +66,7 @@ func (s *ClientServer) Handle(cId int32, sId int32, message *io.Message) (handle
 	switch message.Message.(type) {
 	case *msg.TCPRegisterResponseMessage:
 	case *msg.TCPNewConnectResponseMessage:
+	case *msg.TCPTransferRequestMessage:
 	default:
 		return
 	}
@@ -91,6 +92,8 @@ func (s *ClientServer) Handle(cId int32, sId int32, message *io.Message) (handle
 		}
 	case *msg.TCPNewConnectResponseMessage:
 		go newConnect(s, m.Cid, m.Name, m.CIp+":"+strconv.Itoa(int(m.CPort)))
+	case *msg.TCPTransferRequestMessage:
+		go newTransfer(s, m.Sid, m.Name)
 	default:
 		handle = false
 	}
@@ -99,16 +102,6 @@ func (s *ClientServer) Handle(cId int32, sId int32, message *io.Message) (handle
 
 func newConnect(s *ClientServer, cId int32, name string, remoteAddrS string) {
 	newId := getNewCid()
-	appAddr, err := net.ResolveTCPAddr("tcp4", "0.0.0.0:"+strconv.Itoa(serverNameMap[name]))
-	if err != nil {
-		log.Error(cId, newId, fmt.Errorf("resolveTCPAddr: %v", err))
-		return
-	}
-	appConn, err := net.DialTCP("tcp4", nil, appAddr)
-	if err != nil {
-		log.Error(cId, newId, fmt.Errorf("dialTCP: %v", err))
-		return
-	}
 
 	log.Info(cId, newId, remoteAddrS)
 	localAddr, _ := net.ResolveTCPAddr("tcp4", "0.0.0.0:"+strconv.Itoa(rand.Intn(10000)+50000))
@@ -160,7 +153,7 @@ func newConnect(s *ClientServer, cId int32, name string, remoteAddrS string) {
 	tcp.Tid = cId
 	log.Trace(tcp.Tid, tcp.Id, "ListenTCP success")
 
-	_ = tcp.SetReadDeadline(time.Now().Add(10 * time.Second))
+	_ = tcp.SetReadDeadline(time.Now().Add(3 * time.Second))
 	message := tcp.ReadMessage()
 	if message.Err != nil {
 		log.Error(tcp.Tid, tcp.Id, fmt.Errorf("read TCPNewConnectResultRequestMessage error: %v", message.Err))
@@ -183,10 +176,67 @@ func newConnect(s *ClientServer, cId int32, name string, remoteAddrS string) {
 		return
 	}
 
+	appAddr, err := net.ResolveTCPAddr("tcp4", "0.0.0.0:"+strconv.Itoa(serverNameMap[name]))
+	if err != nil {
+		log.Error(cId, newId, fmt.Errorf("resolveTCPAddr: %v", err))
+		return
+	}
+	appConn, err := net.DialTCP("tcp4", nil, appAddr)
+	if err != nil {
+		log.Error(cId, newId, fmt.Errorf("dialTCP: %v", err))
+		return
+	}
+	defer func() { _ = appConn.Close() }()
+
 	// 交换数据
 	log.Info(tcp.Tid, tcp.Id, fmt.Sprintf("nat success: [%s]", remoteAddrS))
-	go func() {
-		_, _ = sio.Copy(appConn, tcp)
-	}()
-	_, _ = sio.Copy(tcp, appConn)
+	go func(dst sio.Writer, src sio.Reader) {
+		_, _ = sio.Copy(dst, src)
+	}(appConn, tcp.TCPConn)
+	_, _ = sio.Copy(tcp.TCPConn, appConn)
+}
+
+func newTransfer(s *ClientServer, sid int32, name string) {
+	newId := getNewCid()
+	log.Info(newId, sid, fmt.Sprintf("tcp transfer [%s]", name))
+	serverAddr, err := net.ResolveTCPAddr("tcp4", s.serverTCPAddr)
+	if err != nil {
+		log.Error(newId, sid, fmt.Errorf("resolveTCPAddr: %v", err))
+		return
+	}
+	t, err := net.DialTCP("tcp4", nil, serverAddr)
+	if err != nil {
+		log.Error(newId, sid, fmt.Errorf("dialTCP: %v", err))
+		return
+	}
+	defer func() { _ = t.Close() }()
+	tcp := io.NewTCPById(t, newId)
+	tcp.Tid = sid
+
+	appAddr, err := net.ResolveTCPAddr("tcp4", "0.0.0.0:"+strconv.Itoa(serverNameMap[name]))
+	if err != nil {
+		log.Error(tcp.Id, tcp.Tid, fmt.Errorf("resolveTCPAddr: %v", err))
+		_, _ = tcp.WriteMessage(&msg.TCPTransferResponseMessage{Message: err.Error()})
+		return
+	}
+	appConn, err := net.DialTCP("tcp4", nil, appAddr)
+	if err != nil {
+		log.Error(tcp.Id, tcp.Tid, fmt.Errorf("dialTCP: %v", err))
+		_, _ = tcp.WriteMessage(&msg.TCPTransferResponseMessage{Message: err.Error()})
+		return
+	}
+	defer func() { _ = appConn.Close() }()
+
+	_, err = tcp.WriteMessage(&msg.TCPTransferResponseMessage{Sid: sid})
+	if err != nil {
+		log.Error(tcp.Id, tcp.Tid, fmt.Errorf("writeMessage TCPTransferResponseMessage: %v", err))
+		return
+	}
+
+	// 开始传输数据
+	go func(dst sio.Writer, src sio.Reader) {
+		_, _ = sio.Copy(dst, src)
+	}(appConn, tcp.TCPConn)
+	_, _ = sio.Copy(tcp.TCPConn, appConn)
+	log.Debug(tcp.Id, tcp.Tid, "tcp transfer finish")
 }

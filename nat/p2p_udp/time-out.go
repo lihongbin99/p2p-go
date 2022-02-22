@@ -10,10 +10,6 @@ var (
 )
 
 func goTimeOut(udp *io.UDP) {
-	defer func() {
-		udp.TimeOut = true
-		_ = udp.Close()
-	}()
 	time.Sleep(timeOut)
 	for {
 		if time.Now().Sub(udp.LastTransferTime) > timeOut {
@@ -21,4 +17,6 @@ func goTimeOut(udp *io.UDP) {
 		}
 		time.Sleep(udp.LastTransferTime.Add(timeOut).Sub(time.Now()))
 	}
+	udp.TimeOut = true
+	_ = udp.Close()
 }

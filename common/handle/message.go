@@ -18,8 +18,9 @@ type ClientMessageHandle interface {
 }
 
 type ServerMessageHandle interface {
+	NewTCP(tcp *io.TCP, message msg.Message) bool
 	NewConnect(cId int32, sId int32, writeChan chan msg.Message)
 	ConnectSuccess(cId int32, sId int32, writeChan chan msg.Message)
 	CloseConnect(cId int32, sId int32)
-	Handle(cId int32, sId int32, ip string, port uint16, message *io.Message) bool
+	Handle(tcp *io.TCP, cId int32, sId int32, ip string, port uint16, message *io.Message) (bool, bool)
 }

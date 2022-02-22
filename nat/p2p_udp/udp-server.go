@@ -3,6 +3,7 @@ package p2p_udp
 import (
 	"fmt"
 	"net"
+	idg "p2p-go/common/id"
 	"p2p-go/common/io"
 	"p2p-go/common/msg"
 	"strconv"
@@ -30,6 +31,9 @@ type Server struct {
 
 	p2pMap map[int32]*net.UDPAddr // Map<cId, cRemoteAddr>
 	lock   sync.Mutex
+
+	transferMap     map[int32]*net.UDPAddr  // Map<sId, TCP>
+	transferAddrMap map[string]*net.UDPAddr // Map<sId, TCP>
 }
 
 func NewServer() (result *Server) {
@@ -42,6 +46,8 @@ func NewServer() (result *Server) {
 		make(map[int32]interface{}),
 		make(map[int32]*net.UDPAddr),
 		sync.Mutex{},
+		make(map[int32]*net.UDPAddr),
+		make(map[string]*net.UDPAddr),
 	}
 	// 开启 UDP 服务
 	thisAddr, err := net.ResolveUDPAddr("udp4", "0.0.0.0:"+strconv.Itoa(int(udpPort)))
@@ -58,13 +64,19 @@ func NewServer() (result *Server) {
 
 	go func(udp *io.UDP, s *Server) {
 		for {
-			if message, remoteAddr, err := udp.ReadMessageFromUDP(); err != nil {
+			readLength, remoteAddr, err := udp.ReadBufFromUDP()
+			if err != nil {
 				log.Warn(0, 0, fmt.Sprintf("ReadMessageFromUDP: %v", err))
-			} else {
-				if wm, wra, w := s.serverRunNewMessage(message, remoteAddr); w {
-					if _, err = udp.WriteMessageToUDP(wm, wra); err != nil {
-						log.Warn(0, 0, fmt.Sprintf("WriteMessageToUDP: %v", err))
-					}
+				continue
+			}
+			if transferAddr, ok := s.transferAddrMap[remoteAddr.String()]; ok {
+				_, _ = udp.WriteToUDP(udp.Buf[:readLength], transferAddr)
+				continue
+			}
+			message := msg.Read(udp.Buf[:readLength])
+			if wm, wra, w := s.serverRunNewMessage(message, remoteAddr); w {
+				if _, err = udp.WriteMessageToUDP(wm, wra); err != nil {
+					log.Warn(0, 0, fmt.Sprintf("WriteMessageToUDP: %v", err))
 				}
 			}
 		}
@@ -97,6 +109,45 @@ func (s *Server) serverRunNewMessage(message msg.Message, remoteAddr *net.UDPAdd
 		wra = s.p2pMap[m.Cid]
 		w = true
 		log.Info(m.Cid, m.Sid, remoteAddrS)
+	case *msg.UDPTransferRequestMessage:
+		sId := idg.NewId()
+		if cSid, ok := s.registerNameMap[m.Name]; ok {
+			if writeChanMessage, ok := s.writeChanMap[cSid]; ok {
+				transferAddr, _ := net.ResolveUDPAddr("udp4", remoteAddr.String())
+				s.transferMap[sId] = transferAddr
+				log.Info(0, sId, fmt.Sprintf("[%s]transfer to [%s]", remoteAddrS, m.Name))
+				writeChanMessage.writeChan <- &msg.UDPTransferRequestMessage{Sid: sId, Name: m.Name}
+			} else {
+				log.Error(0, sId, fmt.Errorf("writeChanMap no find [%d]", cSid))
+				wm = &msg.UDPTransferResponseMessage{Message: fmt.Sprintf("writeChanMap no find [%d]", cSid)}
+				wra = remoteAddr
+				w = true
+			}
+		} else {
+			log.Error(0, sId, fmt.Errorf("registerNameMap no find [%s]", m.Name))
+			wm = &msg.UDPTransferResponseMessage{Message: fmt.Sprintf("registerNameMap no find [%s]", m.Name)}
+			wra = remoteAddr
+			w = true
+		}
+	case *msg.UDPTransferResponseMessage:
+		clientAddr := s.transferMap[m.Sid]
+		wra = clientAddr
+		w = true
+		if m.Message != "" { // 创建连接失败
+			wm = &msg.UDPTransferResponseMessage{Message: m.Message}
+		} else { // 创建连接成功
+			sId := idg.NewId()
+			// 开始交换数据
+			// TODO 没有删除 transferAddrMap
+			transferAddr, _ := net.ResolveUDPAddr("udp4", remoteAddr.String())
+			s.transferAddrMap[transferAddr.String()] = clientAddr
+			s.transferAddrMap[clientAddr.String()] = transferAddr
+
+			// 通知客户端
+			log.Info(0, sId, fmt.Sprintf("[%d] transfer to [%s]", m.Sid, remoteAddrS))
+			wm = &msg.UDPTransferResponseMessage{Sid: sId}
+		}
+		delete(s.transferMap, m.Sid)
 	default:
 		log.Error(0, 0, fmt.Errorf("serverRunNewMessage: %v", message.ToByteBuf()))
 	}
@@ -149,7 +200,7 @@ func (s *Server) CloseConnect(cId int32, sId int32) {
 	delete(s.writeChanMap, sId)
 }
 
-func (s *Server) Handle(cId int32, sId int32, ip string, port uint16, message *io.Message) (handle bool) {
+func (s *Server) Handle(_ *io.TCP, cId int32, sId int32, ip string, port uint16, message *io.Message) (handle bool, re bool) {
 	switch message.Message.(type) {
 	case *msg.UDPRegisterRequestMessage:
 	case *msg.UDPAccessRequestMessage:
@@ -237,5 +288,9 @@ func (s *Server) Handle(cId int32, sId int32, ip string, port uint16, message *i
 	default:
 		handle = false
 	}
+	return
+}
+
+func (s *Server) NewTCP(tcp *io.TCP, message msg.Message) (re bool) {
 	return
 }

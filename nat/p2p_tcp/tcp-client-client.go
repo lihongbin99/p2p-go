@@ -76,19 +76,66 @@ func NewClientClient(writeChan chan msg.Message) (result *ClientClient) {
 					log.Error(0, 0, fmt.Errorf("acceptTCP: %v", err))
 					continue
 				}
-				go createConnect(c, conn, name)
+				go func(c *ClientClient, appConn *net.TCPConn, name string) {
+					defer func() { _ = appConn.Close() }()
+					if !createConnect(c.serverTCPAddr, appConn, name) {
+						newId := getNewCid()
+						log.Info(newId, 0, fmt.Sprintf("tcp transfer [%s]", name))
+						// p2p失败, 使用中转连接
+						serverAddr, err := net.ResolveTCPAddr("tcp4", c.serverTCPAddr)
+						if err != nil {
+							return
+						}
+						t, err := net.DialTCP("tcp4", nil, serverAddr)
+						if err != nil {
+							return
+						}
+						defer func() { _ = t.Close() }()
+						tcp := io.NewTCPById(t, newId)
+						_, err = tcp.WriteMessage(&msg.TCPTransferRequestMessage{Name: name})
+						if err != nil {
+							log.Error(tcp.Id, 0, fmt.Errorf("writeMessage TCPTransferRequestMessage: %v", err))
+							return
+						}
+						message := tcp.ReadMessage()
+						if message.Err != nil {
+							log.Error(tcp.Id, 0, fmt.Errorf("read TCPTransferResponseMessage error: %v", message.Err))
+							return
+						}
+						var m *msg.TCPTransferResponseMessage = nil
+						switch t := message.Message.(type) {
+						case *msg.TCPTransferResponseMessage:
+							m = t
+						default:
+							log.Error(tcp.Id, 0, fmt.Errorf("read message type no TCPTransferResponseMessage: %v", message.Message.ToByteBuf()))
+							return
+						}
+						if m.Message != "" {
+							log.Error(tcp.Id, 0, fmt.Errorf("read message type no TCPTransferResponseMessage: %v", message.Message.ToByteBuf()))
+							return
+						}
+						tcp.Tid = m.Sid
+						log.Info(tcp.Id, tcp.Tid, fmt.Sprintf("tcp transfer [%s] success", name))
+
+						// 开始传输数据
+						go func(dst sio.Writer, src sio.Reader) {
+							_, _ = sio.Copy(dst, src)
+						}(appConn, tcp.TCPConn)
+						_, _ = sio.Copy(tcp.TCPConn, appConn)
+						log.Debug(tcp.Id, tcp.Tid, "tcp transfer finish")
+					}
+				}(c, conn, name)
 			}
 		}(listener, result, name)
 	}
 	return
 }
 
-func createConnect(c *ClientClient, appConn *net.TCPConn, name string) {
-	defer func() { _ = appConn.Close() }()
+func createConnect(serverTCPAddr string, appConn *net.TCPConn, name string) (success bool) {
 	startCreateTime := time.Now()
 	newId := getNewCid()
 	log.Trace(newId, 0, "new connect")
-	serverAddr, err := net.ResolveTCPAddr("tcp4", c.serverTCPAddr)
+	serverAddr, err := net.ResolveTCPAddr("tcp4", serverTCPAddr)
 	if err != nil {
 		log.Error(newId, 0, fmt.Errorf("resolveTCPAddr: %v", err))
 		return
@@ -108,7 +155,7 @@ func createConnect(c *ClientClient, appConn *net.TCPConn, name string) {
 		log.Error(tcp.Id, 0, fmt.Errorf("writeMessage TCPNewConnectRequestMessage: %v", err))
 		return
 	}
-	log.Trace(tcp.Id, 0, fmt.Sprintf("send message TCPNewConnectRequestMessage [%s]", c.serverTCPAddr))
+	log.Trace(tcp.Id, 0, fmt.Sprintf("send message TCPNewConnectRequestMessage [%s]", serverTCPAddr))
 
 	_ = tcp.SetReadDeadline(time.Now().Add(10 * time.Second))
 	message := tcp.ReadMessage()
@@ -153,7 +200,7 @@ func createConnect(c *ClientClient, appConn *net.TCPConn, name string) {
 		return
 	}
 	log.Trace(tcp.Id, tcp.Tid, "write to client-server TCPNewConnectResultRequestMessage")
-	_ = tcp.SetReadDeadline(time.Now().Add(10 * time.Second))
+	_ = tcp.SetReadDeadline(time.Now().Add(3 * time.Second))
 	if message = tcp.ReadMessage(); message.Err != nil {
 		log.Error(tcp.Id, tcp.Tid, fmt.Errorf("read TCPNewConnectResultRequestMessage error: %v", message.Err))
 		_ = tcp.Close()
@@ -178,10 +225,11 @@ func createConnect(c *ClientClient, appConn *net.TCPConn, name string) {
 	// 开始交换数据
 	endCreateTime := time.Now()
 	log.Info(tcp.Id, tcp.Tid, fmt.Sprintf("nat success: [%s], penetrate: %dms, delay: %dms", remoteAddrS, endCreateTime.Sub(startCreateTime)/time.Millisecond, endDelayTime.Sub(startDelayTime)/time.Millisecond))
-	go func() {
-		_, _ = sio.Copy(appConn, tcp)
-	}()
-	_, _ = sio.Copy(tcp, appConn)
+	go func(dst sio.Writer, src sio.Reader) {
+		_, _ = sio.Copy(dst, src)
+	}(appConn, tcp.TCPConn)
+	_, _ = sio.Copy(tcp.TCPConn, appConn)
+	return true
 }
 
 func (c *ClientClient) ChangeStatus(cId int32, sId int32, status byte) {

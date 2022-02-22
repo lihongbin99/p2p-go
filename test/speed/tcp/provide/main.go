@@ -62,7 +62,9 @@ func main() {
 	v := endTime.Sub(startTime) / time.Second
 	log.Info(0, 0, fmt.Sprintf("maxDownload: %v", maxRead))
 	log.Info(0, 0, fmt.Sprintf("v: %v", int(v)))
-	log.Info(0, 0, fmt.Sprintf("Download: %dMB/s", maxRead/1024/1024/int(v)))
+	if v > 0 {
+		log.Info(0, 0, fmt.Sprintf("Download: %dMB/s", maxRead/1024/1024/int(v)))
+	}
 
 	// 上传测速
 	time.Sleep(1 * time.Second)

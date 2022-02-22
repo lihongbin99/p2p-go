@@ -128,11 +128,53 @@ func clientRunNewMessage(c *ClientClient, buf []byte, readLength int, localAddr 
 		linkCache = &LinkCache{localAddr, make([][]byte, 1)}
 		linkCache.bufList[0] = bufCache
 		c.addrCache[localAddr.String()] = linkCache
-		go func() {
+		go func(c *ClientClient, localAddr *net.UDPAddr, name string) {
 			if !createConnect(c, localAddr, name) {
-				delete(c.addrCache, localAddr.String())
+				// p2p失败, 使用中转连接
+				newId := getNewCid()
+				log.Info(newId, 0, fmt.Sprintf("udp transfer [%s]", name))
+				serverAddr, err := net.ResolveUDPAddr("udp4", c.serverUDPAddr)
+				if err != nil {
+					return
+				}
+				u, err := net.DialUDP("udp4", nil, serverAddr)
+				if err != nil {
+					return
+				}
+				udp := io.NewUDPById(u, newId)
+				_, err = udp.WriteMessage(&msg.UDPTransferRequestMessage{Name: name})
+				if err != nil {
+					log.Error(udp.Id, 0, fmt.Errorf("writeMessage UDPTransferRequestMessage: %v", err))
+					_ = udp.Close()
+					return
+				}
+				message, _, err := udp.ReadMessageFromUDP()
+				if err != nil {
+					log.Error(udp.Id, 0, fmt.Errorf("read UDPTransferResponseMessage error: %v", err))
+					_ = udp.Close()
+					return
+				}
+				var m *msg.UDPTransferResponseMessage = nil
+				switch t := message.(type) {
+				case *msg.UDPTransferResponseMessage:
+					m = t
+				default:
+					log.Error(udp.Id, 0, fmt.Errorf("read message type no UDPTransferResponseMessage: %v", message.ToByteBuf()))
+					_ = udp.Close()
+					return
+				}
+				if m.Message != "" {
+					log.Error(udp.Id, 0, fmt.Errorf("read message type no UDPTransferResponseMessage: %v", message.ToByteBuf()))
+					_ = udp.Close()
+					return
+				}
+				udp.Tid = m.Sid
+				log.Info(udp.Id, udp.Tid, fmt.Sprintf("udp transfer [%s] success", name))
+
+				// 开始传输数据
+				createSuccess(c, udp, localAddr, name)
 			}
-		}()
+		}(c, localAddr, name)
 	}
 }
 
@@ -186,7 +228,7 @@ func createConnect(c *ClientClient, localAddr *net.UDPAddr, name string) (succes
 	case *msg.IgnoreMessage:
 		m.ToByteBuf()
 		log.Trace(udp.Id, 0, "read IgnoreMessage, start reread UDPNewConnectResultResponseMessage")
-		_ = udp.SetReadDeadline(time.Now().Add(10 * time.Second))
+		_ = udp.SetReadDeadline(time.Now().Add(3 * time.Second))
 		message, _, err = udp.ReadMessageFromUDP()
 		if err != nil {
 			log.Error(udp.Id, 0, fmt.Errorf("reread UDPNewConnectResultResponseMessage error: %v", err))
@@ -229,7 +271,7 @@ func createConnect(c *ClientClient, localAddr *net.UDPAddr, name string) (succes
 		return
 	}
 	log.Trace(udp.Id, udp.Tid, "write to client-server UDPNewConnectResultRequestMessage")
-	_ = udp.SetReadDeadline(time.Now().Add(10 * time.Second))
+	_ = udp.SetReadDeadline(time.Now().Add(3 * time.Second))
 	if message, _, err = udp.ReadMessageFromUDP(); err != nil {
 		log.Error(udp.Id, udp.Tid, fmt.Errorf("read UDPNewConnectResultRequestMessage error: %v", err))
 		_ = udp.Close()
@@ -251,12 +293,17 @@ func createConnect(c *ClientClient, localAddr *net.UDPAddr, name string) (succes
 	}
 	_ = udp.SetReadDeadline(time.Time{})
 
+	endCreateTime := time.Now()
+	log.Info(udp.Id, udp.Tid, fmt.Sprintf("nat success: [%s], penetrate: %dms, delay: %dms", remoteAddrS, endCreateTime.Sub(startCreateTime)/time.Millisecond, endDelayTime.Sub(startDelayTime)/time.Millisecond))
+
+	// 开始交换数据
+	createSuccess(c, udp, localAddr, name)
+	return true
+}
+
+func createSuccess(c *ClientClient, udp *io.UDP, localAddr *net.UDPAddr, name string) {
 	// udp 关流
 	go goTimeOut(udp)
-
-	endCreateTime := time.Now()
-	// 开始交换数据
-	log.Info(udp.Id, udp.Tid, fmt.Sprintf("nat success: [%s], penetrate: %dms, delay: %dms", remoteAddrS, endCreateTime.Sub(startCreateTime)/time.Millisecond, endDelayTime.Sub(startDelayTime)/time.Millisecond))
 
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -273,14 +320,18 @@ func createConnect(c *ClientClient, localAddr *net.UDPAddr, name string) (succes
 	c.addrTable[localAddr.String()] = udp
 	// 返回数据给软件
 	go func(c *ClientClient, udp *io.UDP, localAddr *net.UDPAddr, name string) {
-		defer func() { _ = udp.Close() }()
+		defer func() {
+			delete(c.addrTable, localAddr.String())
+			_ = udp.Close()
+		}()
 		buf := make([]byte, 64*1024)
 		for {
 			readLength, err := udp.Read(buf)
+			if udp.TimeOut {
+				break
+			}
 			if err != nil {
-				if !udp.TimeOut {
-					log.Error(udp.Id, udp.Tid, fmt.Errorf("read from p2p error: %v", err))
-				}
+				log.Error(udp.Id, udp.Tid, fmt.Errorf("read from p2p error: %v", err))
 				break
 			}
 			udp.LastTransferTime = time.Now()
@@ -293,7 +344,6 @@ func createConnect(c *ClientClient, localAddr *net.UDPAddr, name string) (succes
 			}
 		}
 	}(c, udp, localAddr, name)
-	return true
 }
 
 func (c *ClientClient) writeToLocal(buf []byte, name string, addr *net.UDPAddr) (writeLength int, err error) {

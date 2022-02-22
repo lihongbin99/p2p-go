@@ -35,6 +35,11 @@ const (
 	TCPNewConnectResponse
 	TCPNewConnectResultRequest
 	TCPNewConnectResultResponse
+
+	TCPTransferRequest
+	TCPTransferResponse
+	UDPTransferRequest
+	UDPTransferResponse
 )
 
 type Message interface {
@@ -77,6 +82,11 @@ var (
 		TCPNewConnectResponse:       &TCPNewConnectResponseMessage{},
 		TCPNewConnectResultRequest:  &TCPNewConnectResultRequestMessage{},
 		TCPNewConnectResultResponse: &TCPNewConnectResultResponseMessage{},
+
+		TCPTransferRequest:  &TCPTransferRequestMessage{},
+		TCPTransferResponse: &TCPTransferResponseMessage{},
+		UDPTransferRequest:  &UDPTransferRequestMessage{},
+		UDPTransferResponse: &UDPTransferResponseMessage{},
 	}
 	errorMessage = &ErrorMessage{}
 	layout       = "06:01:02 15:04:05"
