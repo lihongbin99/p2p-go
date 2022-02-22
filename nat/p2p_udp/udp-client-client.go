@@ -201,7 +201,7 @@ func createConnect(c *ClientClient, localAddr *net.UDPAddr, name string) (succes
 	}
 	log.Trace(udp.Id, 0, fmt.Sprintf("send message UDPNewConnectRequestMessage [%s]", c.serverUDPAddr))
 
-	_ = udp.SetReadDeadline(time.Now().Add(10 * time.Second))
+	_ = udp.SetReadDeadline(time.Now().Add(3 * time.Second))
 	message, _, err := udp.ReadMessageFromUDP()
 	if err != nil {
 		log.Error(udp.Id, 0, fmt.Errorf("read UDPNewConnectResultResponseMessage error: %v", err))

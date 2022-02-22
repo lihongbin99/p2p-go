@@ -135,7 +135,7 @@ func newConnect(s *ClientServer, cId int32, name string, remoteAddrS string) {
 	udp.Tid = cId
 	log.Trace(udp.Tid, udp.Id, "ListenUDP success")
 
-	_ = udp.SetReadDeadline(time.Now().Add(10 * time.Second))
+	_ = udp.SetReadDeadline(time.Now().Add(3 * time.Second))
 	message, rd, err := udp.ReadMessageFromUDP()
 	if err != nil {
 		log.Error(udp.Tid, udp.Id, fmt.Errorf("read UDPNewConnectResultRequestMessage error: %v", err))

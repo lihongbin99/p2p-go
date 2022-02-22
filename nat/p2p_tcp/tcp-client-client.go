@@ -142,7 +142,7 @@ func createConnect(serverTCPAddr string, appConn *net.TCPConn, name string) (suc
 	}
 	log.Trace(tcp.Id, 0, fmt.Sprintf("send message TCPNewConnectRequestMessage [%s]", serverTCPAddr))
 
-	_ = tcp.SetReadDeadline(time.Now().Add(10 * time.Second))
+	_ = tcp.SetReadDeadline(time.Now().Add(3 * time.Second))
 	message := tcp.ReadMessage()
 	if message.Err != nil {
 		log.Error(tcp.Id, 0, fmt.Errorf("read TCPNewConnectResultResponseMessage error: %v", message.Err))

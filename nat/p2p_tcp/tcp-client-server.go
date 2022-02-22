@@ -125,7 +125,7 @@ func newConnect(s *ClientServer, cId int32, name string, remoteAddrS string) {
 		return
 	}
 	defer func() { _ = l.Close() }()
-	_ = l.SetDeadline(time.Now().Add(10 * time.Second))
+	_ = l.SetDeadline(time.Now().Add(3 * time.Second))
 	tp, err := l.AcceptTCP()
 	if err != nil {
 		log.Error(cId, newId, fmt.Errorf("AcceptTCP: %v", err))
