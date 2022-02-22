@@ -19,21 +19,6 @@ const (
 	AccessSuccess
 )
 
-var (
-	clientNameMap = map[string]int{
-		//"udp_p2p_3389": 13389,
-		//"udp_p2p_5938": 15938,
-		"udp_p2p_speed": 13521,
-	}
-	udpClientNames = make([]string, 0)
-)
-
-func init() {
-	for name := range clientNameMap {
-		udpClientNames = append(udpClientNames, name)
-	}
-}
-
 type ClientClient struct {
 	writeChan chan msg.Message
 
@@ -59,7 +44,7 @@ type LinkCache struct {
 
 func NewClientClient(writeChan chan msg.Message) (result *ClientClient) {
 	clientStatus := make(map[string]byte)
-	for _, name := range udpClientNames {
+	for _, name := range names {
 		clientStatus[name] = AccessError
 	}
 	result = &ClientClient{
@@ -74,7 +59,7 @@ func NewClientClient(writeChan chan msg.Message) (result *ClientClient) {
 		sync.Mutex{},
 		sync.Mutex{},
 	}
-	for name, port := range clientNameMap {
+	for name, port := range nameMap {
 		thisAddr, err := net.ResolveUDPAddr("udp4", "0.0.0.0:"+strconv.Itoa(port))
 		if err != nil {
 			log.Fatal(fmt.Errorf("resolveUDPAddr: %v", err))
@@ -389,7 +374,7 @@ func (c *ClientClient) Handle(cId int32, sId int32, message *io.Message) (handle
 		for _, name := range m.CloseNames {
 			c.clientStatus[name] = AccessError
 		}
-		log.Error(cId, sId, fmt.Errorf("access close%v", udpClientNames))
+		log.Error(cId, sId, fmt.Errorf("access close%v", names))
 		c.flushNames(false)
 	case *msg.UDPAccessFlushResponseMessage:
 		log.Trace(0, 0, "flush name")

@@ -18,21 +18,6 @@ const (
 	RegisterSuccess
 )
 
-var (
-	serverNameMap = map[string]int{
-		//"udp_p2p_3389": 3389,
-		//"udp_p2p_5938": 5938,
-		"udp_p2p_speed": 13522,
-	}
-	udpServerNames = make([]string, 0)
-)
-
-func init() {
-	for name := range serverNameMap {
-		udpServerNames = append(udpServerNames, name)
-	}
-}
-
 type ClientServer struct {
 	writeChan          chan msg.Message
 	serverStatus       byte
@@ -47,7 +32,7 @@ func NewClientServer(writeChan chan msg.Message) *ClientServer {
 func (s *ClientServer) ChangeStatus(cId int32, sId int32, status byte) {
 	if status == handle.Success {
 		log.Trace(cId, sId, "send register request")
-		s.writeChan <- &msg.UDPRegisterRequestMessage{Names: udpServerNames[:]}
+		s.writeChan <- &msg.UDPRegisterRequestMessage{Names: names[:]}
 	} else if status == handle.Error {
 		log.Info(cId, sId, "change status register error")
 		s.serverStatus = RegisterError
@@ -78,7 +63,7 @@ func (s *ClientServer) Handle(cId int32, sId int32, message *io.Message) (handle
 			go func(cp *ClientServer, cReloadUUID time.Time) {
 				time.Sleep(1 * time.Minute)
 				if cp.serverStatus == Registering && cp.registerReloadUUID == cReloadUUID {
-					cp.writeChan <- &msg.UDPRegisterRequestMessage{Names: udpServerNames[:]}
+					cp.writeChan <- &msg.UDPRegisterRequestMessage{Names: names[:]}
 				}
 			}(s, reloadUUID)
 			log.Error(cId, sId, fmt.Errorf("register Error: %v", m.Msg))
@@ -180,7 +165,7 @@ func newConnect(s *ClientServer, cId int32, name string, remoteAddrS string) {
 	// udp 关流
 	go goTimeOut(udp)
 
-	appAddr, err := net.ResolveUDPAddr("udp4", "127.0.0.1:"+strconv.Itoa(serverNameMap[name]))
+	appAddr, err := net.ResolveUDPAddr("udp4", "127.0.0.1:"+strconv.Itoa(nameMap[name]))
 	if err != nil {
 		log.Error(cId, newId, fmt.Errorf("resolveUDPAddr: %v", err))
 		_ = udp.Close()
@@ -215,7 +200,7 @@ func newTransfer(s *ClientServer, sid int32, name string) {
 	udp := io.NewUDPById(u, newId)
 	udp.Tid = sid
 
-	appAddr, err := net.ResolveUDPAddr("udp4", "0.0.0.0:"+strconv.Itoa(serverNameMap[name]))
+	appAddr, err := net.ResolveUDPAddr("udp4", "0.0.0.0:"+strconv.Itoa(nameMap[name]))
 	if err != nil {
 		log.Error(udp.Id, udp.Tid, fmt.Errorf("resolveTCPAddr: %v", err))
 		_, _ = udp.WriteMessage(&msg.UDPTransferResponseMessage{Message: err.Error()})

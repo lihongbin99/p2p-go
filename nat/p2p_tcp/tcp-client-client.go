@@ -20,21 +20,6 @@ const (
 	AccessSuccess
 )
 
-var (
-	clientNameMap = map[string]int{
-		//"tcp_p2p_3389": 13389,
-		//"tcp_p2p_5938": 15938,
-		"tcp_p2p_speed": 13521,
-	}
-	tcpClientNames = make([]string, 0)
-)
-
-func init() {
-	for name := range clientNameMap {
-		tcpClientNames = append(tcpClientNames, name)
-	}
-}
-
 type ClientClient struct {
 	writeChan chan msg.Message
 
@@ -47,7 +32,7 @@ type ClientClient struct {
 
 func NewClientClient(writeChan chan msg.Message) (result *ClientClient) {
 	clientStatus := make(map[string]byte)
-	for _, name := range tcpClientNames {
+	for _, name := range names {
 		clientStatus[name] = AccessError
 	}
 	result = &ClientClient{
@@ -57,7 +42,7 @@ func NewClientClient(writeChan chan msg.Message) (result *ClientClient) {
 		time.Now(),
 		config.ServerIp + ":" + strconv.Itoa(config.ServerPort),
 	}
-	for name, port := range clientNameMap {
+	for name, port := range nameMap {
 		thisAddr, err := net.ResolveTCPAddr("tcp4", "0.0.0.0:"+strconv.Itoa(port))
 		if err != nil {
 			log.Fatal(fmt.Errorf("resolveTCPAddr: %v", err))
@@ -267,7 +252,7 @@ func (c *ClientClient) Handle(cId int32, sId int32, message *io.Message) (handle
 		for _, name := range m.CloseNames {
 			c.clientStatus[name] = AccessError
 		}
-		log.Error(cId, sId, fmt.Errorf("access close%v", tcpClientNames))
+		log.Error(cId, sId, fmt.Errorf("access close%v", names))
 		c.flushNames(false)
 	case *msg.TCPAccessFlushResponseMessage:
 		log.Trace(0, 0, "flush name")

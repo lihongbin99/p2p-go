@@ -37,6 +37,9 @@ func notifyHandleChangeStatus(cId int32, sId int32, status byte) {
 func main() {
 	flag.Parse()
 	logger.Init()
+	p2p_tcp.Init()
+	p2p_udp.Init()
+
 	switch cType {
 	case "c":
 		handles = append(handles, p2p_udp.NewClientClient(writeChan))

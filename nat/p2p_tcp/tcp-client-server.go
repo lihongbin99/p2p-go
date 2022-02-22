@@ -20,21 +20,6 @@ const (
 	RegisterSuccess
 )
 
-var (
-	serverNameMap = map[string]int{
-		//"tcp_p2p_3389": 3389,
-		//"tcp_p2p_5938": 5938,
-		"tcp_p2p_speed": 13522,
-	}
-	udpServerNames = make([]string, 0)
-)
-
-func init() {
-	for name := range serverNameMap {
-		udpServerNames = append(udpServerNames, name)
-	}
-}
-
 type ClientServer struct {
 	writeChan          chan msg.Message
 	serverStatus       byte
@@ -55,7 +40,7 @@ func NewClientServer(writeChan chan msg.Message) *ClientServer {
 func (s *ClientServer) ChangeStatus(cId int32, sId int32, status byte) {
 	if status == handle.Success {
 		log.Trace(cId, sId, "send register request")
-		s.writeChan <- &msg.TCPRegisterRequestMessage{Names: udpServerNames[:]}
+		s.writeChan <- &msg.TCPRegisterRequestMessage{Names: names[:]}
 	} else if status == handle.Error {
 		log.Info(cId, sId, "change status register error")
 		s.serverStatus = RegisterError
@@ -85,7 +70,7 @@ func (s *ClientServer) Handle(cId int32, sId int32, message *io.Message) (handle
 			go func(cp *ClientServer, cReloadUUID time.Time) {
 				time.Sleep(1 * time.Minute)
 				if cp.serverStatus == Registering && cp.registerReloadUUID == cReloadUUID {
-					cp.writeChan <- &msg.TCPRegisterRequestMessage{Names: udpServerNames[:]}
+					cp.writeChan <- &msg.TCPRegisterRequestMessage{Names: names[:]}
 				}
 			}(s, reloadUUID)
 			log.Error(cId, sId, fmt.Errorf("register Error: %v", m.Msg))
@@ -176,7 +161,7 @@ func newConnect(s *ClientServer, cId int32, name string, remoteAddrS string) {
 		return
 	}
 
-	appAddr, err := net.ResolveTCPAddr("tcp4", "0.0.0.0:"+strconv.Itoa(serverNameMap[name]))
+	appAddr, err := net.ResolveTCPAddr("tcp4", "0.0.0.0:"+strconv.Itoa(nameMap[name]))
 	if err != nil {
 		log.Error(cId, newId, fmt.Errorf("resolveTCPAddr: %v", err))
 		return
@@ -213,7 +198,7 @@ func newTransfer(s *ClientServer, sid int32, name string) {
 	tcp := io.NewTCPById(t, newId)
 	tcp.Tid = sid
 
-	appAddr, err := net.ResolveTCPAddr("tcp4", "0.0.0.0:"+strconv.Itoa(serverNameMap[name]))
+	appAddr, err := net.ResolveTCPAddr("tcp4", "0.0.0.0:"+strconv.Itoa(nameMap[name]))
 	if err != nil {
 		log.Error(tcp.Id, tcp.Tid, fmt.Errorf("resolveTCPAddr: %v", err))
 		_, _ = tcp.WriteMessage(&msg.TCPTransferResponseMessage{Message: err.Error()})
