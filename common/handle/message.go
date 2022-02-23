@@ -5,7 +5,6 @@ import (
 	"p2p-go/common/msg"
 )
 
-// status
 const (
 	_ byte = iota
 	Error
@@ -22,5 +21,5 @@ type ServerMessageHandle interface {
 	NewConnect(cId int32, sId int32, writeChan chan msg.Message)
 	ConnectSuccess(cId int32, sId int32, writeChan chan msg.Message)
 	CloseConnect(cId int32, sId int32)
-	Handle(tcp *io.TCP, cId int32, sId int32, ip string, port uint16, message *io.Message) (bool, bool)
+	Handle(cId int32, sId int32, ip string, port uint16, message *io.Message) (bool, bool)
 }

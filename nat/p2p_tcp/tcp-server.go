@@ -96,7 +96,7 @@ func (s *Server) CloseConnect(cId int32, sId int32) {
 	delete(s.writeChanMap, sId)
 }
 
-func (s *Server) Handle(tcp *io.TCP, cId int32, sId int32, ip string, port uint16, message *io.Message) (handle bool, re bool) {
+func (s *Server) Handle(cId int32, sId int32, ip string, port uint16, message *io.Message) (handle bool, re bool) {
 	switch message.Message.(type) {
 	case *msg.TCPRegisterRequestMessage:
 	case *msg.TCPAccessRequestMessage:

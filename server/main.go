@@ -12,6 +12,7 @@ import (
 	"p2p-go/common/msg"
 	"p2p-go/nat/p2p_tcp"
 	"p2p-go/nat/p2p_udp"
+	"p2p-go/nat/transfer_tcp"
 	"strconv"
 	"strings"
 	"time"
@@ -28,6 +29,7 @@ func main() {
 
 	handles = append(handles, p2p_udp.NewServer())
 	handles = append(handles, p2p_tcp.NewServer())
+	handles = append(handles, transfer_tcp.NewServer())
 
 	localAddr, err := net.ResolveTCPAddr("tcp4", "0.0.0.0:13520")
 	if err != nil {
@@ -134,7 +136,7 @@ func main() {
 						split := strings.Split(remoteAddr, ":")
 						port, _ := strconv.Atoi(split[1])
 						for _, h := range handles {
-							if do, re := h.Handle(tcp, tcp.Tid, tcp.Id, split[0], uint16(port), &message); re { // core processor!
+							if do, re := h.Handle(tcp.Tid, tcp.Id, split[0], uint16(port), &message); re { // core processor!
 								err = io.EOF
 								break
 							} else if do {

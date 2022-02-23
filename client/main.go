@@ -13,6 +13,7 @@ import (
 	"p2p-go/common/msg"
 	"p2p-go/nat/p2p_tcp"
 	"p2p-go/nat/p2p_udp"
+	"p2p-go/nat/transfer_tcp"
 	"strconv"
 	"time"
 )
@@ -39,6 +40,7 @@ func main() {
 	logger.Init()
 	p2p_tcp.Init()
 	p2p_udp.Init()
+	transfer_tcp.Init()
 
 	switch cType {
 	case "c":
@@ -47,9 +49,9 @@ func main() {
 	case "s":
 		handles = append(handles, p2p_udp.NewClientServer(writeChan))
 		handles = append(handles, p2p_tcp.NewClientServer(writeChan))
-	default:
-		log.Fatal(fmt.Errorf("init: %s", cType))
 	}
+
+	handles = append(handles, transfer_tcp.NewClient(writeChan))
 
 	interval := 1
 	for {

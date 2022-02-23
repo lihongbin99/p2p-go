@@ -20,6 +20,9 @@ func init() {
 func Init() {
 	nameSplit := strings.Split(nameS, ",")
 	for _, name := range nameSplit {
+		if name == "" {
+			continue
+		}
 		np := strings.Split(name, ":")
 		if len(np) != 2 {
 			log.Fatal(fmt.Errorf("config error: %s", np))
