@@ -220,9 +220,9 @@ func (s *Server) NewTCP(tcp *io.TCP, message msg.Message) (re bool) {
 				s.transferWait[tcp.Id] = make(chan interface{})
 				log.Info(0, tcp.Id, fmt.Sprintf("[%s]transfer to [%s]", tcp.TCPConn.RemoteAddr().String(), m.Name))
 				csWriteChanMessage.writeChan <- &msg.TCPTransferRequestMessage{Sid: tcp.Id, Name: m.Name}
-				_ = <-s.transferWait[tcp.Id] // 等待传输完成后在退出]
-				delete(s.transferMap, m.Sid)
-				delete(s.transferWait, m.Sid)
+				_ = <-s.transferWait[tcp.Id] // 等待传输完成后在退出
+				delete(s.transferMap, tcp.Id)
+				delete(s.transferWait, tcp.Id)
 				log.Info(0, tcp.Id, "tcp transfer finish")
 			} else {
 				log.Error(0, tcp.Id, fmt.Errorf("writeChanMap no find [%d]", cSid))
@@ -233,22 +233,28 @@ func (s *Server) NewTCP(tcp *io.TCP, message msg.Message) (re bool) {
 			_, _ = tcp.WriteMessage(&msg.TCPTransferResponseMessage{Message: fmt.Sprintf("registerNameMap no find [%s]", m.Name)})
 		}
 	case *msg.TCPTransferResponseMessage:
-		if m.Message != "" { // 创建连接失败
-			_, _ = s.transferMap[m.Sid].WriteMessage(&msg.TCPTransferResponseMessage{Message: m.Message})
-		} else { // 创建连接成功
-			// 通知客户端
-			client := s.transferMap[m.Sid]
-			_, _ = client.WriteMessage(&msg.TCPTransferResponseMessage{Sid: tcp.Id})
-			log.Info(0, tcp.Id, fmt.Sprintf("[%d] transfer to [%s]", m.Sid, tcp.TCPConn.RemoteAddr().String()))
-			// 开始交换数据
-			finish := make(chan interface{})
-			go goTimeOut(tcp)
-			go transfer(client.TCPConn, tcp.TCPConn, tcp, finish)
-			go transfer(tcp.TCPConn, client.TCPConn, tcp, finish)
-			_ = <-finish
-			_ = <-finish
+		if client, ok := s.transferMap[m.Sid]; ok {
+			if m.Message != "" { // 创建连接失败
+				_, _ = client.WriteMessage(&msg.TCPTransferResponseMessage{Message: m.Message})
+			} else { // 创建连接成功
+				// 通知客户端
+				_, _ = client.WriteMessage(&msg.TCPTransferResponseMessage{Sid: tcp.Id})
+				log.Info(0, tcp.Id, fmt.Sprintf("[%d] transfer to [%s]", m.Sid, tcp.TCPConn.RemoteAddr().String()))
+				// 开始交换数据
+				finish := make(chan interface{})
+				go goTimeOut(tcp)
+				go transfer(client.TCPConn, tcp.TCPConn, tcp, finish)
+				go transfer(tcp.TCPConn, client.TCPConn, tcp, finish)
+				_ = <-finish
+				_ = <-finish
+			}
+			if w, ok := s.transferWait[m.Sid]; ok {
+				w <- 1
+			}
+		} else {
+			log.Error(0, tcp.Id, fmt.Errorf("no find transferMap by %d", m.Sid))
 		}
-		s.transferWait[m.Sid] <- 1
+
 	}
 	return true
 }

@@ -201,13 +201,13 @@ func newTransfer(s *ClientServer, sid int32, name string) {
 	appAddr, err := net.ResolveTCPAddr("tcp4", "0.0.0.0:"+strconv.Itoa(nameMap[name]))
 	if err != nil {
 		log.Error(tcp.Id, tcp.Tid, fmt.Errorf("resolveTCPAddr: %v", err))
-		_, _ = tcp.WriteMessage(&msg.TCPTransferResponseMessage{Message: err.Error()})
+		_, _ = tcp.WriteMessage(&msg.TCPTransferResponseMessage{Sid: sid, Message: err.Error()})
 		return
 	}
 	appConn, err := net.DialTCP("tcp4", nil, appAddr)
 	if err != nil {
 		log.Error(tcp.Id, tcp.Tid, fmt.Errorf("dialTCP: %v", err))
-		_, _ = tcp.WriteMessage(&msg.TCPTransferResponseMessage{Message: err.Error()})
+		_, _ = tcp.WriteMessage(&msg.TCPTransferResponseMessage{Sid: sid, Message: err.Error()})
 		return
 	}
 	defer func() { _ = appConn.Close() }()
